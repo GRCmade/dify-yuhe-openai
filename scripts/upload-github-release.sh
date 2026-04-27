@@ -30,6 +30,23 @@ print(match.group(1))
 PY
 }
 
+version_to_digits() {
+  local version="$1"
+
+  python3 - "$version" <<'PY'
+import re
+import sys
+
+current = sys.argv[1].strip()
+if not re.fullmatch(r"\d+(?:\.\d+)+", current):
+    raise SystemExit(f"manifest version is not numeric dot-version: {current}")
+parts = current.split(".")
+if any(len(part) > 2 for part in parts):
+    raise SystemExit(f"each manifest version segment must be at most 2 digits: {current}")
+print("".join(parts))
+PY
+}
+
 existing_release_versions() {
   {
     git -C "$ROOT_DIR" tag -l 'v*' | sed 's/^v//'
@@ -124,8 +141,9 @@ run() {
 
 PLUGIN_NAME="$(read_manifest_field name)"
 PLUGIN_VERSION="$(read_manifest_field version)"
+PLUGIN_VERSION_DIGITS="$(version_to_digits "$PLUGIN_VERSION")"
 RELEASE_TAG="v${PLUGIN_VERSION}"
-PACKAGE_FILE="$ROOT_DIR/dist/${PLUGIN_NAME}_${PLUGIN_VERSION}.difypkg"
+PACKAGE_FILE="$ROOT_DIR/dist/${PLUGIN_NAME}_${PLUGIN_VERSION_DIGITS}.difypkg"
 REMOTE_URL="$(git -C "$ROOT_DIR" remote get-url origin)"
 GITHUB_REPO="$(parse_github_repo "$REMOTE_URL")"
 

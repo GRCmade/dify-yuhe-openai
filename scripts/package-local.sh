@@ -30,75 +30,33 @@ print(match.group(1))
 PY
 }
 
-existing_release_versions() {
-  {
-    git -C "$ROOT_DIR" tag -l 'v*' | sed 's/^v//'
-    if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
-      git -C "$ROOT_DIR" ls-remote --tags --refs origin 'v*' 2>/dev/null | sed 's#.*refs/tags/v##'
-    fi
-  } | awk 'NF' | sort -u
-}
+version_to_digits() {
+  local version="$1"
 
-ensure_version_is_publishable() {
-  local current_version="$1"
-  local versions
-  versions="$(existing_release_versions || true)"
-
-  EXISTING_RELEASE_VERSIONS="$versions" python3 - "$current_version" <<'PY'
-import os
+  python3 - "$version" <<'PY'
 import re
 import sys
 
 current = sys.argv[1].strip()
-versions = [line.strip() for line in os.environ.get("EXISTING_RELEASE_VERSIONS", "").splitlines() if line.strip()]
-
-def parse(version: str):
-    if not re.fullmatch(r"\d+(?:\.\d+)+", version):
-        return None
-    return tuple(int(part) for part in version.split("."))
-
-def bump_patch(version: str):
-    parts = version.split(".")
-    parts[-1] = str(int(parts[-1]) + 1)
-    return ".".join(parts)
-
-current_key = parse(current)
-if current_key is None:
+if not re.fullmatch(r"\d+(?:\.\d+)+", current):
     raise SystemExit(f"manifest version is not numeric dot-version: {current}")
-
-parsed_versions = [(version, parse(version)) for version in versions]
-parsed_versions = [(version, key) for version, key in parsed_versions if key is not None]
-
-latest = None
-if parsed_versions:
-    latest = max(parsed_versions, key=lambda item: item[1])[0]
-
-current_exists = any(version == current for version, _ in parsed_versions)
-if current_exists or (latest is not None and current_key <= parse(latest)):
-    base = latest if latest is not None and parse(latest) >= current_key else current
-    suggestion = bump_patch(base)
-    message = [
-        f"Current manifest version {current} is already released or not ahead of the latest released version.",
-    ]
-    if latest is not None:
-        message.append(f"Latest released version: {latest}")
-    if current_exists:
-        message.append(f"Current version already exists: {current}")
-    message.append(f"Suggested next version: {suggestion}")
-    raise SystemExit("\n".join(message))
+parts = current.split(".")
+if any(len(part) > 2 for part in parts):
+    raise SystemExit(f"each manifest version segment must be at most 2 digits: {current}")
+print("".join(parts))
 PY
 }
 
 PLUGIN_NAME="$(read_manifest_field name)"
 PLUGIN_VERSION="$(read_manifest_field version)"
-OUTPUT_FILE="$DIST_DIR/${PLUGIN_NAME}_${PLUGIN_VERSION}.difypkg"
-
-ensure_version_is_publishable "$PLUGIN_VERSION"
+PLUGIN_VERSION_DIGITS="$(version_to_digits "$PLUGIN_VERSION")"
+OUTPUT_FILE="$DIST_DIR/${PLUGIN_NAME}_${PLUGIN_VERSION_DIGITS}.difypkg"
+LEGACY_OUTPUT_FILE="$DIST_DIR/${PLUGIN_NAME}_${PLUGIN_VERSION}.difypkg"
 
 mkdir -p "$DIST_DIR"
 
 tmp_dir="$(mktemp -d)"
-tmp_file="$tmp_dir/${PLUGIN_NAME}_${PLUGIN_VERSION}.difypkg"
+tmp_file="$tmp_dir/${PLUGIN_NAME}_${PLUGIN_VERSION_DIGITS}.difypkg"
 
 cleanup() {
   rm -rf "$tmp_dir"
@@ -107,9 +65,13 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Packaging ${PLUGIN_NAME} ${PLUGIN_VERSION}"
+echo "Version token: ${PLUGIN_VERSION_DIGITS}"
 echo "Output: $OUTPUT_FILE"
 
 dify plugin package "$ROOT_DIR" -o "$tmp_file"
+if [[ "$LEGACY_OUTPUT_FILE" != "$OUTPUT_FILE" ]]; then
+  rm -f "$LEGACY_OUTPUT_FILE"
+fi
 mv "$tmp_file" "$OUTPUT_FILE"
 
 checksum="$(
