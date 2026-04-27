@@ -1,6 +1,6 @@
 version: 0.3.9
 type: plugin
-author: "yuhe"
+author: "GRCmade"
 name: "yuhe-openai"
 description:
   en_US: A maintained OpenAI-compatible plugin for Yuhe gateways, including stricter Responses API compatibility fixes.

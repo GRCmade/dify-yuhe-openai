@@ -23,3 +23,35 @@ This plugin allows developers to integrate LLMs such as GPT-3.5, GPT-4, GPT-5, a
 After installing the plugin, configure your OpenAI-compatible settings in the Model Provider section. This includes your API key (find it [here](https://platform.openai.com/account/api-keys)) and optional Organization ID and API Base. Save to use Yuhe OpenAI.
 
 <img src="./_assets/openai-01.png" width="400" />
+
+## Publish This Plugin
+This repository is structured to be published as a standalone Dify plugin repository.
+
+Official Dify references:
+
+- [Publish to Individual GitHub Repository](https://docs.dify.ai/en/develop-plugin/publishing/marketplace-listing/release-to-individual-github-repo)
+- [Package as Local File and Share](https://docs.dify.ai/en/develop-plugin/publishing/marketplace-listing/release-by-file)
+- [Publishing FAQ](https://docs.dify.ai/en/develop-plugin/publishing/faq/faq)
+
+### Release Checklist
+- Keep the `author` field in `manifest.yaml` and `provider/openai.yaml` consistent with your GitHub ID. This repository uses `GRCmade`.
+- Complete remote debugging before packaging.
+- Make the GitHub repository public if you want other Dify users to install it directly from GitHub.
+
+### Package the Plugin
+With the Dify CLI installed, go to the directory above this repository and run:
+
+```bash
+dify plugin package ./dify-yuhe-openai
+```
+
+Dify generates a `.difypkg` file in the current directory.
+
+### Publish Options
+- GitHub repository: push the plugin source to a public GitHub repository and share the repository URL. Dify users can install it from GitHub with the repository URL and version.
+- Local file: upload the generated `.difypkg` from the Dify Plugins page for private distribution or internal testing.
+- Marketplace: submit it separately if you want official review and one-click installation from the Dify Marketplace.
+
+### Notes for Self-Hosted Dify
+- If installation fails with `PluginDaemonBadRequestError: plugin_unique_identifier is not valid`, recheck that both `author` fields match your GitHub ID, then package again.
+- If self-hosted Dify rejects a non-marketplace plugin with a signature error, Dify's FAQ says you can set `FORCE_VERIFYING_SIGNATURE=false` in `docker/.env` for trusted test environments before restarting Dify.
