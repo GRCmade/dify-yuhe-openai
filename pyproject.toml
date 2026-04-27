@@ -1,6 +1,6 @@
 [project]
 name = "dify-yuhe-openai"
-version = "0.3.9"
+version = "0.3.11"
 description = "Maintained OpenAI-compatible Dify plugin for Yuhe gateways"
 readme = "README.md"
 requires-python = ">=3.12"
