@@ -34,7 +34,7 @@ Official Dify references:
 - [Publishing FAQ](https://docs.dify.ai/en/develop-plugin/publishing/faq/faq)
 
 ### Release Checklist
-- Keep the `author` field in `manifest.yaml` and `provider/openai.yaml` consistent with your GitHub ID. This repository uses `GRCmade`.
+- Keep the `author` field in `manifest.yaml` and `provider/openai.yaml` consistent with your GitHub ID in lowercase. Dify plugin daemon only accepts lowercase `author` values matching `^[a-z0-9_-]{1,64}$`. This repository uses `grcmade`.
 - Complete remote debugging before packaging.
 - Make the GitHub repository public if you want other Dify users to install it directly from GitHub.
 
@@ -55,3 +55,4 @@ Dify generates a `.difypkg` file in the current directory.
 ### Notes for Self-Hosted Dify
 - If installation fails with `PluginDaemonBadRequestError: plugin_unique_identifier is not valid`, recheck that both `author` fields match your GitHub ID, then package again.
 - If self-hosted Dify rejects a non-marketplace plugin with a signature error, Dify's FAQ says you can set `FORCE_VERIFYING_SIGNATURE=false` in `docker/.env` for trusted test environments before restarting Dify.
+- If the error still includes an identifier like `Author/plugin:version@checksum`, make sure `author` is lowercase. `GRCmade/...` is invalid, while `grcmade/...` is accepted by the current daemon regex.
