@@ -71,6 +71,47 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
     Model class for OpenAI large language model.
     """
 
+    def _normalize_json_schema_config(self, json_schema: Any) -> dict:
+        """
+        Normalize supported structured-output configs to the inner
+        `json_schema` object expected by OpenAI-compatible APIs.
+
+        Supported inputs:
+        - raw JSON Schema objects
+        - {"name", "strict", "schema"} objects
+        - {"type":"json_schema","json_schema":{...}} wrapped objects
+        """
+        if not isinstance(json_schema, dict):
+            raise ValueError(f"json_schema must be a dict, got {type(json_schema).__name__}")
+
+        if json_schema.get("type") == "json_schema" and isinstance(json_schema.get("json_schema"), dict):
+            return self._normalize_json_schema_config(json_schema["json_schema"])
+
+        if "schema" in json_schema:
+            return json_schema
+
+        return {"schema": json_schema}
+
+    def _uses_json_schema_response_format(self, model_parameters: dict[str, Any]) -> bool:
+        """
+        Detect whether the request is asking the model for native JSON-schema
+        structured output.
+        """
+        response_format = model_parameters.get("response_format")
+        if isinstance(response_format, str):
+            return response_format == "json_schema"
+
+        if isinstance(response_format, dict):
+            return response_format.get("type") == "json_schema"
+
+        text_config = model_parameters.get("text")
+        if isinstance(text_config, dict):
+            text_format = text_config.get("format")
+            if isinstance(text_format, dict):
+                return text_format.get("type") == "json_schema"
+
+        return False
+
     def _invoke(
         self,
         model: str,
@@ -735,7 +776,7 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
                 if not json_schema:
                     raise ValueError("Must define JSON Schema when the response format is json_schema")
                 try:
-                    schema = json.loads(json_schema)
+                    schema = self._normalize_json_schema_config(json.loads(json_schema))
                 except Exception:
                     raise ValueError(f"not correct json_schema format: {json_schema}")
                 model_parameters.pop("json_schema")
@@ -870,17 +911,13 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
         if response_format:
             if isinstance(response_format, dict):
                 if response_format.get("type") == "json_schema":
-                    json_schema = response_format.get("json_schema", {})
-                    if isinstance(json_schema, dict) and "schema" in json_schema:
-                        schema_obj = json_schema
-                    else:
-                        schema_obj = {"schema": json_schema}
+                    schema_obj = self._normalize_json_schema_config(response_format.get("json_schema", {}))
 
                     params["text"] = {
                         "format": {
                             "type": "json_schema",
                             "name": schema_obj.get("name", "response"),
-                            "schema": schema_obj.get("schema", json_schema),
+                            "schema": schema_obj.get("schema", {}),
                         }
                     }
                     if "strict" in schema_obj:
@@ -1055,6 +1092,7 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
         """
         Invoke model using the Responses API with streaming.
         """
+        structured_output_mode = self._uses_json_schema_response_format(model_parameters)
         response_params = self._build_responses_api_params(model_parameters, user)
 
         input_items = self._convert_prompt_messages_to_responses_input(prompt_messages, tools)
@@ -1096,14 +1134,15 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
                 delta_text = getattr(event, "delta", None) or getattr(event, "text", "") or ""
                 if delta_text:
                     full_text += delta_text
-                    yield LLMResultChunk(
-                        model=final_model,
-                        prompt_messages=prompt_messages,
-                        delta=LLMResultChunkDelta(
-                            index=0,
-                            message=AssistantPromptMessage(content=delta_text),
-                        ),
-                    )
+                    if not structured_output_mode:
+                        yield LLMResultChunk(
+                            model=final_model,
+                            prompt_messages=prompt_messages,
+                            delta=LLMResultChunkDelta(
+                                index=0,
+                                message=AssistantPromptMessage(content=delta_text),
+                            ),
+                        )
 
             elif event_type == "response.output_item.added":
                 item = event.item
@@ -1131,9 +1170,24 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
                 if resp.usage:
                     prompt_tokens = resp.usage.input_tokens
                     completion_tokens = resp.usage.output_tokens
+                completed_text = resp.output_text or ""
+
+                # For structured output requests, emit the completed response as
+                # one canonical JSON block so Dify can parse it reliably.
+                if structured_output_mode and not pending_tool_calls:
+                    full_text = completed_text or full_text
+                    if full_text:
+                        yield LLMResultChunk(
+                            model=final_model,
+                            prompt_messages=prompt_messages,
+                            delta=LLMResultChunkDelta(
+                                index=0,
+                                message=AssistantPromptMessage(content=full_text),
+                            ),
+                        )
                 # if stream produced no text, extract from completed response
-                if not full_text and not pending_tool_calls:
-                    full_text = resp.output_text or ""
+                elif not full_text and not pending_tool_calls:
+                    full_text = completed_text
                     if full_text:
                         yield LLMResultChunk(
                             model=final_model,
