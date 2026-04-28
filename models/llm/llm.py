@@ -893,8 +893,9 @@ class OpenAILargeLanguageModel(_CommonOpenAI, LargeLanguageModel):
         params.pop("json_schema", None)
         # verbosity stays as top-level param (already supported by Responses API)
 
-        if user:
-            params["user"] = user
+        # Some OpenAI-compatible Responses gateways backed by stricter
+        # upstream implementations reject the otherwise-public `user`
+        # field and return a generic upstream 502.
 
         return params
 

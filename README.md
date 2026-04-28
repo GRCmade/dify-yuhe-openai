@@ -9,6 +9,7 @@ This fork was created to maintain compatibility with Yuhe-style OpenAI-compatibl
 The maintained changes include:
 
 - stripping `metadata` from Responses API requests
+- stripping `user` from Responses API requests for gateways whose stricter upstream rejects it
 - stripping `presence_penalty` and `frequency_penalty` for stricter Responses-compatible gateways
 - converting system prompts from `role="system"` to `role="developer"` for gateways that reject `system` on `/v1/responses`
 - keeping credential validation and runtime invocation behavior aligned for GPT-5-class models
