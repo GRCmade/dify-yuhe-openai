@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST_PATH="$ROOT_DIR/manifest.yaml"
+PYPROJECT_PATH="$ROOT_DIR/pyproject.toml"
+UV_LOCK_PATH="$ROOT_DIR/uv.lock"
 DIST_DIR="$ROOT_DIR/dist"
 
 if ! command -v dify >/dev/null 2>&1; then
@@ -30,6 +32,61 @@ print(match.group(1))
 PY
 }
 
+read_pyproject_version() {
+  python3 - "$PYPROJECT_PATH" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+content = path.read_text(encoding="utf-8")
+match = re.search(r'^version = "([^"]+)"\s*$', content, re.MULTILINE)
+if not match:
+    raise SystemExit("missing project version in pyproject.toml")
+print(match.group(1))
+PY
+}
+
+read_uv_lock_project_version() {
+  python3 - "$UV_LOCK_PATH" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+content = path.read_text(encoding="utf-8")
+match = re.search(
+    r'(?ms)^\[\[package\]\]\nname = "dify-yuhe-openai"\nversion = "([^"]+)"',
+    content,
+)
+if not match:
+    raise SystemExit('missing project package version in uv.lock')
+print(match.group(1))
+PY
+}
+
+read_synced_project_version() {
+  local manifest_version
+  local pyproject_version
+  local uv_lock_version
+
+  manifest_version="$(read_manifest_field version)"
+  pyproject_version="$(read_pyproject_version)"
+  uv_lock_version="$(read_uv_lock_project_version)"
+
+  if [[ "$manifest_version" != "$pyproject_version" || "$manifest_version" != "$uv_lock_version" ]]; then
+    {
+      echo "project version is not synchronized:"
+      echo "  manifest.yaml: $manifest_version"
+      echo "  pyproject.toml: $pyproject_version"
+      echo "  uv.lock: $uv_lock_version"
+    } >&2
+    exit 1
+  fi
+
+  echo "$manifest_version"
+}
+
 version_to_digits() {
   local version="$1"
 
@@ -48,7 +105,7 @@ PY
 }
 
 PLUGIN_NAME="$(read_manifest_field name)"
-PLUGIN_VERSION="$(read_manifest_field version)"
+PLUGIN_VERSION="$(read_synced_project_version)"
 PLUGIN_VERSION_DIGITS="$(version_to_digits "$PLUGIN_VERSION")"
 OUTPUT_FILE="$DIST_DIR/${PLUGIN_NAME}_${PLUGIN_VERSION_DIGITS}.difypkg"
 LEGACY_OUTPUT_FILE="$DIST_DIR/${PLUGIN_NAME}_${PLUGIN_VERSION}.difypkg"
